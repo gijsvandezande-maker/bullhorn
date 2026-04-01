@@ -355,6 +355,57 @@
 .badge-orange { background: var(--color-orange-bg); color: var(--color-orange); }
 .badge-gray   { background: var(--color-gray-bg);   color: var(--color-gray); }
 
+/* ── Bullhorn save ───────────────────────────────────── */
+
+.btn-bullhorn {
+  width: 100%;
+  padding: .625rem 1rem;
+  background: #fff;
+  color: #e8423f;
+  border: 2px solid #e8423f;
+  border-radius: 6px;
+  font-size: .9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  transition: background .15s, color .15s;
+}
+
+.btn-bullhorn:hover:not(:disabled) {
+  background: #e8423f;
+  color: #fff;
+}
+
+.spinner-dark {
+  border-color: rgba(232,66,63,.3);
+  border-top-color: #e8423f;
+}
+
+.btn-bullhorn:hover:not(:disabled) .spinner-dark {
+  border-color: rgba(255,255,255,.4);
+  border-top-color: #fff;
+}
+
+.bullhorn-success {
+  font-size: .9rem;
+  color: var(--color-green);
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.bullhorn-success a {
+  color: var(--color-green);
+  font-weight: 600;
+}
+
+.bullhorn-warning {
+  color: var(--color-orange);
+  font-size: .82rem;
+}
+
 /* ── Copy button ─────────────────────────────────────── */
 
 .copy-btn {

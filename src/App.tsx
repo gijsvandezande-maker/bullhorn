@@ -5,6 +5,23 @@ import type { ParseResult } from "./types";
 import { SECTIONS } from "./types";
 import "./App.css";
 
+interface BullhornResult {
+  jobId: number;
+  url: string;
+  warnings: string[];
+}
+
+async function saveTooBullhorn(result: ParseResult): Promise<BullhornResult> {
+  const res = await fetch("/api/bullhorn/job", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(result),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Onbekende fout");
+  return data as BullhornResult;
+}
+
 export default function App() {
   const [apiKey, setApiKey] = useState(
     () => (import.meta as unknown as { env: Record<string, string> }).env.VITE_ANTHROPIC_API_KEY ?? ""
@@ -14,6 +31,10 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [streamPreview, setStreamPreview] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const [saving, setSaving] = useState(false);
+  const [bullhornResult, setBullhornResult] = useState<BullhornResult | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function handleParse() {
     if (!apiKey.trim()) {
@@ -26,6 +47,8 @@ export default function App() {
     }
     setError(null);
     setResult(null);
+    setBullhornResult(null);
+    setSaveError(null);
     setStreamPreview("");
     setStreaming(true);
 
@@ -37,18 +60,29 @@ export default function App() {
       );
       setResult(parsed);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Er is een fout opgetreden."
-      );
+      setError(err instanceof Error ? err.message : "Er is een fout opgetreden.");
     } finally {
       setStreaming(false);
       setStreamPreview("");
     }
   }
 
-  const totalFields = result
-    ? Object.keys(result.confidence).length
-    : 0;
+  async function handleSaveToBullhorn() {
+    if (!result) return;
+    setSaving(true);
+    setSaveError(null);
+    setBullhornResult(null);
+    try {
+      const bh = await saveTooBullhorn(result);
+      setBullhornResult(bh);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Bullhorn fout");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const totalFields = result ? Object.keys(result.confidence).length : 0;
   const foundFields = result
     ? Object.values(result.confidence).filter((c) => c !== "niet_gevonden").length
     : 0;
@@ -110,9 +144,7 @@ export default function App() {
                 disabled={streaming}
               >
                 {streaming ? (
-                  <>
-                    <span className="spinner" /> Verwerken...
-                  </>
+                  <><span className="spinner" /> Verwerken...</>
                 ) : (
                   "Analyseer functieprofiel"
                 )}
@@ -124,6 +156,42 @@ export default function App() {
             <div className="stream-preview">
               <p className="stream-label">JSON wordt opgebouwd...</p>
               <pre className="stream-text">{streamPreview}</pre>
+            </div>
+          )}
+
+          {result && (
+            <div className="card">
+              <div className="card-body">
+                <p className="form-label">Bullhorn</p>
+                {bullhornResult ? (
+                  <div className="bullhorn-success">
+                    <p>
+                      ✓ Vacature aangemaakt —{" "}
+                      <a href={bullhornResult.url} target="_blank" rel="noreferrer">
+                        JobOrder #{bullhornResult.jobId}
+                      </a>
+                    </p>
+                    {bullhornResult.warnings.map((w, i) => (
+                      <p key={i} className="bullhorn-warning">⚠ {w}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    {saveError && <div className="error-box" style={{ marginBottom: "0.75rem" }}>{saveError}</div>}
+                    <button
+                      className="btn-bullhorn"
+                      onClick={handleSaveToBullhorn}
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <><span className="spinner spinner-dark" /> Opslaan...</>
+                      ) : (
+                        "Opslaan in Bullhorn"
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
