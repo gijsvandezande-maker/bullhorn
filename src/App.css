@@ -401,6 +401,11 @@
   font-weight: 600;
 }
 
+.bullhorn-linked {
+  color: var(--color-green);
+  font-size: .82rem;
+}
+
 .bullhorn-warning {
   color: var(--color-orange);
   font-size: .82rem;

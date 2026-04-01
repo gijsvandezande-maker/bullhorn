@@ -8,6 +8,8 @@ import "./App.css";
 interface BullhornResult {
   jobId: number;
   url: string;
+  linkedCorporation: { id: number } | null;
+  linkedContact: { id: number } | null;
   warnings: string[];
 }
 
@@ -171,6 +173,16 @@ export default function App() {
                         JobOrder #{bullhornResult.jobId}
                       </a>
                     </p>
+                    {bullhornResult.linkedCorporation && result?.opdrachtgever && (
+                      <p className="bullhorn-linked">
+                        ✓ Opdrachtgever gekoppeld: {result.opdrachtgever}
+                      </p>
+                    )}
+                    {bullhornResult.linkedContact && result?.contact && (
+                      <p className="bullhorn-linked">
+                        ✓ Contact gekoppeld: {result.contact}
+                      </p>
+                    )}
                     {bullhornResult.warnings.map((w, i) => (
                       <p key={i} className="bullhorn-warning">⚠ {w}</p>
                     ))}

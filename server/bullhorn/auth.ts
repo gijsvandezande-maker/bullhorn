@@ -3,7 +3,7 @@ import axios from "axios";
 const AUTH_BASE = "https://auth.bullhornstaffing.com";
 const REST_BASE = "https://rest-services.bullhornstaffing.com/rest-services";
 
-interface Session {
+export interface Session {
   BhRestToken: string;
   restUrl: string;
   expiresAt: number;
