@@ -1,8 +1,11 @@
 import axios from "axios";
+import fs from "fs";
+import path from "path";
 
 const AUTH_BASE = "https://auth.bullhornstaffing.com";
 const REST_BASE = "https://rest-services.bullhornstaffing.com/rest-services";
-const REDIRECT_URI = "http://localhost:3000/api/auth/callback";
+const REDIRECT_URI = "http://localhost:3001/api/auth/callback";
+const TOKEN_FILE = path.join(process.cwd(), ".bullhorn-token.json");
 
 export interface Session {
   BhRestToken: string;
@@ -10,63 +13,39 @@ export interface Session {
   expiresAt: number;
 }
 
+interface StoredTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
 let cachedSession: Session | null = null;
 
-export async function getSession(): Promise<Session> {
-  if (cachedSession && Date.now() < cachedSession.expiresAt) {
-    return cachedSession;
-  }
+function loadStoredTokens(): StoredTokens | null {
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      return JSON.parse(fs.readFileSync(TOKEN_FILE, "utf-8")) as StoredTokens;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
 
-  const clientId = process.env.BULLHORN_CLIENT_ID!;
-  const clientSecret = process.env.BULLHORN_CLIENT_SECRET!;
-  const username = process.env.BULLHORN_USERNAME!;
-  const password = process.env.BULLHORN_PASSWORD!;
+function saveTokens(tokens: StoredTokens) {
+  fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens), "utf-8");
+}
 
-  // Step 1: Get auth code — Bullhorn redirects to redirect_uri?code=XXX
-  const authorizeParams = new URLSearchParams({
-    client_id: clientId,
+export function getAuthorizeUrl(): string {
+  const params = new URLSearchParams({
+    client_id: process.env.BULLHORN_CLIENT_ID!,
     response_type: "code",
-    username,
-    password,
-    action: "Login",
     redirect_uri: REDIRECT_URI,
   });
+  return `${AUTH_BASE}/oauth/authorize?${params}`;
+}
 
-  const authorizeRes = await axios.get(
-    `${AUTH_BASE}/oauth/authorize?${authorizeParams}`,
-    {
-      maxRedirects: 0,
-      validateStatus: () => true, // accept any status, we handle it ourselves
-    }
-  );
+export async function handleCallback(code: string): Promise<void> {
+  const clientId = process.env.BULLHORN_CLIENT_ID!;
+  const clientSecret = process.env.BULLHORN_CLIENT_SECRET!;
 
-  console.log("Bullhorn authorize status:", authorizeRes.status);
-  console.log("Bullhorn authorize location:", authorizeRes.headers["location"]);
-  if (authorizeRes.status === 200) {
-    // Login failed — log body snippet to diagnose
-    const body = typeof authorizeRes.data === "string"
-      ? authorizeRes.data.slice(0, 500)
-      : JSON.stringify(authorizeRes.data).slice(0, 500);
-    console.log("Bullhorn authorize body:", body);
-  }
-
-  const location = authorizeRes.headers["location"] as string | undefined;
-  if (!location) {
-    throw new Error(
-      `Bullhorn authorize mislukt (status ${authorizeRes.status}) — controleer gebruikersnaam/wachtwoord`
-    );
-  }
-
-  // Extract code from redirect URL
-  const redirectUrl = new URL(
-    location.startsWith("http") ? location : `http://placeholder${location}`
-  );
-  const code = redirectUrl.searchParams.get("code");
-  if (!code) {
-    throw new Error(`Geen code in Bullhorn redirect: ${location}`);
-  }
-
-  // Step 2: Exchange code for access token
   const tokenParams = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -75,23 +54,66 @@ export async function getSession(): Promise<Session> {
     redirect_uri: REDIRECT_URI,
   });
 
-  const tokenRes = await axios.post(
-    `${AUTH_BASE}/oauth/token?${tokenParams}`
-  );
-  const accessToken: string = tokenRes.data.access_token;
+  const tokenRes = await axios.post(`${AUTH_BASE}/oauth/token?${tokenParams}`);
+  saveTokens({
+    accessToken: tokenRes.data.access_token,
+    refreshToken: tokenRes.data.refresh_token,
+  });
+  cachedSession = null; // force re-login on next request
+}
 
-  // Step 3: Login to get BhRestToken + restUrl
+async function loginWithAccessToken(accessToken: string): Promise<Session> {
   const loginRes = await axios.post(
     `${REST_BASE}/login?version=*&access_token=${accessToken}`
   );
-
-  cachedSession = {
+  return {
     BhRestToken: loginRes.data.BhRestToken,
     restUrl: loginRes.data.restUrl,
     expiresAt: Date.now() + 9 * 60 * 1000,
   };
+}
 
-  return cachedSession;
+async function refreshAccessToken(refreshToken: string): Promise<StoredTokens> {
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: process.env.BULLHORN_CLIENT_ID!,
+    client_secret: process.env.BULLHORN_CLIENT_SECRET!,
+  });
+  const res = await axios.post(`${AUTH_BASE}/oauth/token?${params}`);
+  const tokens: StoredTokens = {
+    accessToken: res.data.access_token,
+    refreshToken: res.data.refresh_token ?? refreshToken,
+  };
+  saveTokens(tokens);
+  return tokens;
+}
+
+export async function getSession(): Promise<Session> {
+  if (cachedSession && Date.now() < cachedSession.expiresAt) {
+    return cachedSession;
+  }
+
+  const stored = loadStoredTokens();
+  if (!stored) {
+    throw new Error("SETUP_REQUIRED");
+  }
+
+  try {
+    cachedSession = await loginWithAccessToken(stored.accessToken);
+    return cachedSession;
+  } catch {
+    // Access token expired — try refresh
+    try {
+      const refreshed = await refreshAccessToken(stored.refreshToken);
+      cachedSession = await loginWithAccessToken(refreshed.accessToken);
+      return cachedSession;
+    } catch {
+      // Refresh also failed — need to re-authorize
+      fs.unlinkSync(TOKEN_FILE);
+      throw new Error("SETUP_REQUIRED");
+    }
+  }
 }
 
 export function invalidateSession() {

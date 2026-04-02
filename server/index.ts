@@ -18,6 +18,7 @@ app.use(cors({ origin: "http://localhost:5173" }));
 app.use(express.json({ limit: "2mb" }));
 
 app.use("/api/bullhorn", jobRouter);
+app.use("/api", jobRouter);
 
 app.listen(PORT, () => {
   console.log(`Bullhorn API server running on http://localhost:${PORT}`);

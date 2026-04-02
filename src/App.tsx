@@ -8,17 +8,18 @@ import "./App.css";
 
 interface BhEntity { id: number; name?: string; firstName?: string; lastName?: string; }
 
-interface LookupResult {
-  match: BhEntity | null;
-  candidates: BhEntity[];
-}
-
 interface BullhornResult {
   jobId: number;
   url: string;
   linkedCorporation: { id: number } | null;
   linkedContact: { id: number } | null;
   warnings: string[];
+}
+
+async function openBullhornAuth() {
+  const res = await fetch("/api/bullhorn/auth-url");
+  const data = await res.json() as { url: string };
+  window.open(data.url, "_blank");
 }
 
 // ── Save flow states ──────────────────────────────────────────────────────────
@@ -34,32 +35,6 @@ type SaveState =
     }
   | { step: "saving" }
   | { step: "done"; result: BullhornResult };
-
-async function lookup(endpoint: string, name: string): Promise<LookupResult> {
-  const res = await fetch(`/api/bullhorn/search/${endpoint}?name=${encodeURIComponent(name)}`);
-  if (!res.ok) return { match: null, candidates: [] };
-  return res.json() as Promise<LookupResult>;
-}
-
-async function createJob(
-  parsed: ParseResult,
-  corporationId: number | "skip" | null,
-  contactId: number | "skip" | null
-): Promise<BullhornResult> {
-  const body = {
-    ...parsed,
-    corporationId: corporationId === "skip" ? undefined : corporationId ?? undefined,
-    contactId: contactId === "skip" ? undefined : contactId ?? undefined,
-  };
-  const res = await fetch("/api/bullhorn/job", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? "Onbekende fout");
-  return data as BullhornResult;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -103,9 +78,21 @@ export default function App() {
 
     try {
       // Run lookups in parallel
+      const [corpRes, contactRes] = await Promise.all([
+        result.opdrachtgever ? fetch(`/api/bullhorn/search/corporation?name=${encodeURIComponent(result.opdrachtgever)}`) : Promise.resolve(null),
+        result.contact ? fetch(`/api/bullhorn/search/contact?name=${encodeURIComponent(result.contact)}`) : Promise.resolve(null),
+      ]);
+
+      // Check for SETUP_REQUIRED
+      if (corpRes?.status === 401 || contactRes?.status === 401) {
+        setSaveState({ step: "idle" });
+        setSaveError("SETUP_REQUIRED");
+        return;
+      }
+
       const [corpResult, contactResult] = await Promise.all([
-        result.opdrachtgever ? lookup("corporation", result.opdrachtgever) : Promise.resolve({ match: null, candidates: [] }),
-        result.contact ? lookup("contact", result.contact) : Promise.resolve({ match: null, candidates: [] }),
+        corpRes ? corpRes.json() as Promise<{ match: BhEntity | null; candidates: BhEntity[] }> : Promise.resolve({ match: null, candidates: [] }),
+        contactRes ? contactRes.json() as Promise<{ match: BhEntity | null; candidates: BhEntity[] }> : Promise.resolve({ match: null, candidates: [] }),
       ]);
 
       const needsCorpPick = corpResult.candidates.length > 1 && !corpResult.match;
@@ -143,8 +130,25 @@ export default function App() {
     setSaveError(null);
     setSaveState({ step: "saving" });
     try {
-      const bh = await createJob(result, corporationId, contactId);
-      setSaveState({ step: "done", result: bh });
+      const res = await fetch("/api/bullhorn/job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...result,
+          corporationId: corporationId ?? undefined,
+          contactId: contactId ?? undefined,
+        }),
+      });
+      const data = await res.json() as BullhornResult & { error?: string };
+      if (!res.ok) {
+        if (data.error === "SETUP_REQUIRED") {
+          setSaveState({ step: "idle" });
+          setSaveError("SETUP_REQUIRED");
+          return;
+        }
+        throw new Error(data.error ?? "Onbekende fout");
+      }
+      setSaveState({ step: "done", result: data });
     } catch (err) {
       setSaveState({ step: "idle" });
       setSaveError(err instanceof Error ? err.message : "Bullhorn fout");
@@ -242,7 +246,16 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    {saveError && (
+                    {saveError === "SETUP_REQUIRED" ? (
+                      <div style={{ marginBottom: "0.75rem" }}>
+                        <p style={{ fontSize: ".85rem", color: "var(--color-text-muted)", marginBottom: ".5rem" }}>
+                          Bullhorn is nog niet gekoppeld. Klik hieronder om eenmalig in te loggen.
+                        </p>
+                        <button className="btn-bullhorn" onClick={openBullhornAuth}>
+                          Koppel Bullhorn account
+                        </button>
+                      </div>
+                    ) : saveError && (
                       <div className="error-box" style={{ marginBottom: "0.75rem" }}>{saveError}</div>
                     )}
 

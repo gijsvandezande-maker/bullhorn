@@ -1,11 +1,34 @@
 import { Router } from "express";
 import axios from "axios";
-import { getSession, invalidateSession } from "../bullhorn/auth.js";
+import { getSession, invalidateSession, getAuthorizeUrl, handleCallback } from "../bullhorn/auth.js";
 import { mapToJobOrder } from "../bullhorn/mappers.js";
 import { findCorporation, findContact } from "../bullhorn/lookup.js";
 import type { ParsedProfile } from "../bullhorn/mappers.js";
 
 const router = Router();
+
+/** GET /api/auth/callback — OAuth2 redirect from Bullhorn */
+router.get("/auth/callback", async (req, res) => {
+  const code = String(req.query.code ?? "").trim();
+  if (!code) {
+    res.status(400).send("Geen autorisatiecode ontvangen.");
+    return;
+  }
+  try {
+    await handleCallback(code);
+    res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem">
+      <h2>✓ Bullhorn gekoppeld!</h2>
+      <p>Je kunt dit tabblad sluiten en terugkeren naar de app.</p>
+    </body></html>`);
+  } catch (err) {
+    res.status(500).send(`Fout bij koppelen: ${String(err)}`);
+  }
+});
+
+/** GET /api/bullhorn/auth-url — return the OAuth consent URL */
+router.get("/auth-url", (_req, res) => {
+  res.json({ url: getAuthorizeUrl() });
+});
 
 /** POST /api/bullhorn/job — create a JobOrder from parsed profile */
 router.post("/job", async (req, res) => {
@@ -78,6 +101,10 @@ router.post("/job", async (req, res) => {
       warnings,
     });
   } catch (err: unknown) {
+    if (err instanceof Error && err.message === "SETUP_REQUIRED") {
+      res.status(401).json({ error: "SETUP_REQUIRED" });
+      return;
+    }
     const axiosErr = err as { response?: { status: number; data: unknown } };
     if (axiosErr.response?.status === 401) {
       invalidateSession();
@@ -101,6 +128,10 @@ router.get("/search/corporation", async (req, res) => {
     const { match, candidates } = await findCorporation(session, name);
     res.json({ match, candidates });
   } catch (err) {
+    if (err instanceof Error && err.message === "SETUP_REQUIRED") {
+      res.status(401).json({ error: "SETUP_REQUIRED" });
+      return;
+    }
     res.status(500).json({ error: String(err) });
   }
 });
@@ -114,6 +145,10 @@ router.get("/search/contact", async (req, res) => {
     const { match, candidates } = await findContact(session, name);
     res.json({ match, candidates });
   } catch (err) {
+    if (err instanceof Error && err.message === "SETUP_REQUIRED") {
+      res.status(401).json({ error: "SETUP_REQUIRED" });
+      return;
+    }
     res.status(500).json({ error: String(err) });
   }
 });
@@ -124,6 +159,10 @@ router.get("/status", async (_req, res) => {
     const session = await getSession();
     res.json({ ok: true, restUrl: session.restUrl });
   } catch (err) {
+    if (err instanceof Error && err.message === "SETUP_REQUIRED") {
+      res.status(401).json({ ok: false, error: "SETUP_REQUIRED" });
+      return;
+    }
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
