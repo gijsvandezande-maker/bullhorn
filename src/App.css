@@ -493,6 +493,25 @@
   font-size: .82rem;
 }
 
+/* ── Connect box ─────────────────────────────────────── */
+
+.connect-box {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: .875rem;
+  margin-bottom: .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.connect-step {
+  font-size: .82rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
 /* ── Copy button ─────────────────────────────────────── */
 
 .copy-btn {

@@ -16,10 +16,10 @@ interface BullhornResult {
   warnings: string[];
 }
 
-async function openBullhornAuth() {
+async function fetchAuthUrl(): Promise<string> {
   const res = await fetch("/api/bullhorn/auth-url");
   const data = await res.json() as { url: string };
-  window.open(data.url, "_blank");
+  return data.url;
 }
 
 // ── Save flow states ──────────────────────────────────────────────────────────
@@ -50,6 +50,9 @@ export default function App() {
 
   const [saveState, setSaveState] = useState<SaveState>({ step: "idle" });
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [connectStep, setConnectStep] = useState<"hidden" | "open" | "connecting">("hidden");
+  const [connectCode, setConnectCode] = useState("");
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   async function handleParse() {
     if (!apiKey.trim()) { setParseError("Voer een Anthropic API-sleutel in."); return; }
@@ -68,6 +71,34 @@ export default function App() {
     } finally {
       setStreaming(false);
       setStreamPreview("");
+    }
+  }
+
+  async function handleOpenConnect() {
+    setConnectError(null);
+    setConnectCode("");
+    setConnectStep("open");
+    const url = await fetchAuthUrl();
+    window.open(url, "_blank");
+  }
+
+  async function handleSubmitCode() {
+    if (!connectCode.trim()) return;
+    setConnectError(null);
+    setConnectStep("connecting");
+    try {
+      const res = await fetch("/api/bullhorn/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: connectCode.trim() }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Fout bij koppelen");
+      setConnectStep("hidden");
+      setSaveError(null);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Fout");
+      setConnectStep("open");
     }
   }
 
@@ -246,17 +277,39 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    {saveError === "SETUP_REQUIRED" ? (
+                    {saveError === "SETUP_REQUIRED" && connectStep === "hidden" ? (
                       <div style={{ marginBottom: "0.75rem" }}>
                         <p style={{ fontSize: ".85rem", color: "var(--color-text-muted)", marginBottom: ".5rem" }}>
                           Bullhorn is nog niet gekoppeld. Klik hieronder om eenmalig in te loggen.
                         </p>
-                        <button className="btn-bullhorn" onClick={openBullhornAuth}>
+                        <button className="btn-bullhorn" onClick={handleOpenConnect}>
                           Koppel Bullhorn account
                         </button>
                       </div>
-                    ) : saveError && (
+                    ) : saveError && saveError !== "SETUP_REQUIRED" && (
                       <div className="error-box" style={{ marginBottom: "0.75rem" }}>{saveError}</div>
+                    )}
+
+                    {connectStep !== "hidden" && (
+                      <div className="connect-box">
+                        <p className="connect-step">Stap 1 — Er is een nieuw tabblad geopend. Log in bij Bullhorn en klik op <strong>Allow</strong>.</p>
+                        <p className="connect-step">Stap 2 — Kopieer de <strong>code=...</strong> waarde uit de URL van de pagina waar je op uitkomt en plak hem hieronder.</p>
+                        <input
+                          className="form-input"
+                          placeholder="Plak de code hier..."
+                          value={connectCode}
+                          onChange={(e) => setConnectCode(e.target.value)}
+                          style={{ marginBottom: ".5rem" }}
+                        />
+                        {connectError && <div className="error-box" style={{ marginBottom: ".5rem" }}>{connectError}</div>}
+                        <button
+                          className="btn-bullhorn"
+                          onClick={handleSubmitCode}
+                          disabled={connectStep === "connecting" || !connectCode.trim()}
+                        >
+                          {connectStep === "connecting" ? <><span className="spinner spinner-dark" /> Koppelen...</> : "Bevestig koppeling"}
+                        </button>
+                      </div>
                     )}
 
                     {/* Pickers for ambiguous matches */}

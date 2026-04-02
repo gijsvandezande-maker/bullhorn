@@ -4,7 +4,6 @@ import path from "path";
 
 const AUTH_BASE = "https://auth.bullhornstaffing.com";
 const REST_BASE = "https://rest-services.bullhornstaffing.com/rest-services";
-const REDIRECT_URI = "http://localhost:3001/api/auth/callback";
 const TOKEN_FILE = path.join(process.cwd(), ".bullhorn-token.json");
 
 export interface Session {
@@ -37,7 +36,6 @@ export function getAuthorizeUrl(): string {
   const params = new URLSearchParams({
     client_id: process.env.BULLHORN_CLIENT_ID!,
     response_type: "code",
-    redirect_uri: REDIRECT_URI,
   });
   return `${AUTH_BASE}/oauth/authorize?${params}`;
 }
@@ -51,7 +49,6 @@ export async function handleCallback(code: string): Promise<void> {
     code,
     client_id: clientId,
     client_secret: clientSecret,
-    redirect_uri: REDIRECT_URI,
   });
 
   const tokenRes = await axios.post(`${AUTH_BASE}/oauth/token?${tokenParams}`);

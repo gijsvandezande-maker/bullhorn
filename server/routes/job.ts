@@ -7,27 +7,24 @@ import type { ParsedProfile } from "../bullhorn/mappers.js";
 
 const router = Router();
 
-/** GET /api/auth/callback — OAuth2 redirect from Bullhorn */
-router.get("/auth/callback", async (req, res) => {
-  const code = String(req.query.code ?? "").trim();
+/** GET /api/bullhorn/auth-url — return the OAuth consent URL */
+router.get("/auth-url", (_req, res) => {
+  res.json({ url: getAuthorizeUrl() });
+});
+
+/** POST /api/bullhorn/connect — exchange auth code for tokens */
+router.post("/connect", async (req, res) => {
+  const code = String(req.body?.code ?? "").trim();
   if (!code) {
-    res.status(400).send("Geen autorisatiecode ontvangen.");
+    res.status(400).json({ error: "code is verplicht" });
     return;
   }
   try {
     await handleCallback(code);
-    res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem">
-      <h2>✓ Bullhorn gekoppeld!</h2>
-      <p>Je kunt dit tabblad sluiten en terugkeren naar de app.</p>
-    </body></html>`);
+    res.json({ ok: true });
   } catch (err) {
-    res.status(500).send(`Fout bij koppelen: ${String(err)}`);
+    res.status(500).json({ error: String(err) });
   }
-});
-
-/** GET /api/bullhorn/auth-url — return the OAuth consent URL */
-router.get("/auth-url", (_req, res) => {
-  res.json({ url: getAuthorizeUrl() });
 });
 
 /** POST /api/bullhorn/job — create a JobOrder from parsed profile */
