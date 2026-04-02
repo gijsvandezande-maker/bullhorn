@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 dotenv.config(); // fallback to .env
+
+console.log("CLIENT_ID geladen:", process.env.BULLHORN_CLIENT_ID ? process.env.BULLHORN_CLIENT_ID.slice(0, 8) + "..." : "ONTBREEKT ❌");
 import express from "express";
 import cors from "cors";
 import jobRouter from "./routes/job.js";
