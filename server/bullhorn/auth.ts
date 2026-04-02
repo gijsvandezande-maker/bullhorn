@@ -2,6 +2,7 @@ import axios from "axios";
 
 const AUTH_BASE = "https://auth.bullhornstaffing.com";
 const REST_BASE = "https://rest-services.bullhornstaffing.com/rest-services";
+const REDIRECT_URI = "http://localhost:3000/api/auth/callback";
 
 export interface Session {
   BhRestToken: string;
@@ -21,32 +22,41 @@ export async function getSession(): Promise<Session> {
   const username = process.env.BULLHORN_USERNAME!;
   const password = process.env.BULLHORN_PASSWORD!;
 
-  // Step 1: Get auth code via username/password authorize
+  // Step 1: Get auth code — Bullhorn redirects to redirect_uri?code=XXX
   const authorizeParams = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
     username,
     password,
     action: "Login",
+    redirect_uri: REDIRECT_URI,
   });
 
-  let code: string;
-  try {
-    await axios.get(`${AUTH_BASE}/oauth/authorize?${authorizeParams}`, {
+  const authorizeRes = await axios.get(
+    `${AUTH_BASE}/oauth/authorize?${authorizeParams}`,
+    {
       maxRedirects: 0,
-    });
-    throw new Error("Expected 302 redirect from Bullhorn authorize");
-  } catch (err: unknown) {
-    const axiosErr = err as { response?: { status: number; headers: Record<string, string> } };
-    if (axiosErr.response?.status === 302) {
-      const location = axiosErr.response.headers["location"];
-      const url = new URL(location);
-      const c = url.searchParams.get("code");
-      if (!c) throw new Error("No code in Bullhorn redirect");
-      code = c;
-    } else {
-      throw err;
+      validateStatus: () => true, // accept any status, we handle it ourselves
     }
+  );
+
+  console.log("Bullhorn authorize status:", authorizeRes.status);
+  console.log("Bullhorn authorize location:", authorizeRes.headers["location"]);
+
+  const location = authorizeRes.headers["location"] as string | undefined;
+  if (!location) {
+    throw new Error(
+      `Bullhorn authorize mislukt (status ${authorizeRes.status}) — controleer gebruikersnaam/wachtwoord`
+    );
+  }
+
+  // Extract code from redirect URL
+  const redirectUrl = new URL(
+    location.startsWith("http") ? location : `http://placeholder${location}`
+  );
+  const code = redirectUrl.searchParams.get("code");
+  if (!code) {
+    throw new Error(`Geen code in Bullhorn redirect: ${location}`);
   }
 
   // Step 2: Exchange code for access token
@@ -55,6 +65,7 @@ export async function getSession(): Promise<Session> {
     code,
     client_id: clientId,
     client_secret: clientSecret,
+    redirect_uri: REDIRECT_URI,
   });
 
   const tokenRes = await axios.post(
@@ -70,7 +81,7 @@ export async function getSession(): Promise<Session> {
   cachedSession = {
     BhRestToken: loginRes.data.BhRestToken,
     restUrl: loginRes.data.restUrl,
-    expiresAt: Date.now() + 9 * 60 * 1000, // refresh after 9 min
+    expiresAt: Date.now() + 9 * 60 * 1000,
   };
 
   return cachedSession;
