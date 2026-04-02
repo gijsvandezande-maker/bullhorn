@@ -42,6 +42,13 @@ export async function getSession(): Promise<Session> {
 
   console.log("Bullhorn authorize status:", authorizeRes.status);
   console.log("Bullhorn authorize location:", authorizeRes.headers["location"]);
+  if (authorizeRes.status === 200) {
+    // Login failed — log body snippet to diagnose
+    const body = typeof authorizeRes.data === "string"
+      ? authorizeRes.data.slice(0, 500)
+      : JSON.stringify(authorizeRes.data).slice(0, 500);
+    console.log("Bullhorn authorize body:", body);
+  }
 
   const location = authorizeRes.headers["location"] as string | undefined;
   if (!location) {
