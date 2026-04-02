@@ -1,7 +1,11 @@
 import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
-dotenv.config(); // fallback to .env
+import path from "path";
 
+const root = process.cwd();
+dotenv.config({ path: path.join(root, ".env.local") });
+dotenv.config({ path: path.join(root, ".env") });
+
+console.log("Werkmap:", root);
 console.log("CLIENT_ID geladen:", process.env.BULLHORN_CLIENT_ID ? process.env.BULLHORN_CLIENT_ID.slice(0, 8) + "..." : "ONTBREEKT ❌");
 import express from "express";
 import cors from "cors";
