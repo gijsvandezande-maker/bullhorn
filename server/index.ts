@@ -1,4 +1,6 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+dotenv.config(); // fallback to .env
 import express from "express";
 import cors from "cors";
 import jobRouter from "./routes/job.js";
